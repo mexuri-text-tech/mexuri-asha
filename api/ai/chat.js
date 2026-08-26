@@ -3,6 +3,7 @@ import { callGroq } from "../_lib/groq.js";
 import { applyCors } from "../_lib/cors.js";
 import { logAndFail } from "../_lib/errors.js";
 import { BRAND_RULES } from "../_lib/brand.js";
+import { getCached, setCached, normalizeCacheKey } from "../_lib/aiCache.js";
 
 const STYLE_GUIDE = {
   casual: "Friendly, relaxed, conversational. Contractions are fine.",
@@ -11,16 +12,8 @@ const STYLE_GUIDE = {
   concise: "Short, direct, no fluff. Minimal words.",
 };
 
-// Hard ceiling on the combined attachment context sent to the model,
-// regardless of how many files are attached. (Nothing in the app attaches
-// files anymore — Asha only handles survey creation/analysis now — but this
-// stays as a safety net in case documentContexts is ever populated again.)
 const MAX_TOTAL_DOC_CONTEXT_CHARS = 9000;
 
-// documentContexts: [{ fileName, type, summary }, ...] -> single prompt block.
-// Splits the shared budget evenly so one long summary can't starve the rest,
-// and tells the model explicitly to reason across files together when
-// there's more than one — that's the actual "analyze them at the same time" ask.
 function buildDocumentsBlock(documentContexts) {
   const withSummaries = (documentContexts || []).filter((d) => d?.summary);
   if (!withSummaries.length) return "";
@@ -38,8 +31,12 @@ function buildDocumentsBlock(documentContexts) {
   return `\n\n${intro}\n\n${fileBlocks.join("\n\n")}\n\nGround every claim in the actual data above; never invent numbers, rows, or details that aren't there. If the data doesn't answer what the user's asking, say so plainly instead of guessing.`;
 }
 
+function isSimpleContextFreeRequest({ history, referencedSurvey, documentContexts }) {
+  return history.length === 0 && !referencedSurvey && !(documentContexts || []).some((d) => d?.summary);
+}
+
 export default async function handler(req, res) {
-  if (applyCors(req, res)) return; // handles the OPTIONS preflight
+  if (applyCors(req, res)) return;
   if (req.method !== "POST") return res.status(405).end();
 
   const user = await verifyUser(req);
@@ -47,6 +44,17 @@ export default async function handler(req, res) {
 
   const { history = [], userMessage, responseStyle = "casual", referencedSurvey = null, documentContexts = [] } = req.body;
   const transcript = history.map((m) => `${m.role.toUpperCase()}: ${m.text}`).join("\n");
+  const simpleContextFree = isSimpleContextFreeRequest({ history, referencedSurvey, documentContexts });
+
+  // Only cache first-turn, context-free requests. This prevents a cached
+  // answer from leaking conversation-, survey-, or document-specific data.
+  const cacheKey = simpleContextFree
+    ? `${responseStyle}:${normalizeCacheKey(userMessage || "")}`
+    : null;
+  if (cacheKey) {
+    const cached = getCached(cacheKey);
+    if (cached) return res.status(200).json(cached);
+  }
 
   let referenceBlock = "";
   if (referencedSurvey) {
@@ -108,31 +116,41 @@ ${transcript || "(none yet)"}
 
 New user message: ${userMessage}${referenceBlock}${documentBlock}${hasRealData ? "\n\nReal data is available above — use it for grounded charts where they add clarity." : "\n\nNo document or survey data is attached to this message — do not include chart blocks."}`;
 
-
   const systemInstruction = "You always respond with a single valid JSON object and nothing else — no markdown fences, no commentary outside the JSON.";
 
   try {
     let result;
     try {
-      result = await callGroq({ task: "reasoning", prompt, systemInstruction, maxTokens: 4096 });
+      result = await callGroq({
+        task: simpleContextFree ? "light" : "reasoning",
+        prompt,
+        systemInstruction,
+        maxTokens: simpleContextFree ? 1024 : 4096,
+      });
     } catch (err) {
       if (!String(err.message).includes("json_validate_failed")) throw err;
       console.error("[ai/chat] blocks generation failed validation, retrying text-only:", err);
       const fallbackPrompt = `${prompt}\n\nIMPORTANT: your previous attempt failed to produce valid JSON. This time respond with ONLY {"blocks":[{"type":"text","content": string}],"suggestSurvey": boolean} — one short text block, no charts.`;
-      result = await callGroq({ task: "reasoning", prompt: fallbackPrompt, systemInstruction, maxTokens: 1024 });
+      result = await callGroq({
+        task: simpleContextFree ? "light" : "reasoning",
+        prompt: fallbackPrompt,
+        systemInstruction,
+        maxTokens: 1024,
+      });
     }
 
     const blocks = Array.isArray(result.blocks) ? result.blocks : [];
-    const flatText = blocks
-      .map((b) => (b.type === "chart" ? `[Chart: ${b.chart?.title || "untitled"}]` : b.content))
-      .filter(Boolean)
-      .join("\n\n");
-
-    return res.status(200).json({
-      text: flatText,
+    const response = {
+      text: blocks
+        .map((b) => (b.type === "chart" ? `[Chart: ${b.chart?.title || "untitled"}]` : b.content))
+        .filter(Boolean)
+        .join("\n\n"),
       blocks,
       suggestSurvey: !!result.suggestSurvey,
-    });
+    };
+
+    if (cacheKey) setCached(cacheKey, response);
+    return res.status(200).json(response);
   } catch (err) {
     return logAndFail(res, 500, "ai/chat", err, "Asha had trouble putting that response together. Please try again.");
   }
