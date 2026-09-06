@@ -22,7 +22,7 @@
   min-height: 0;
   overflow: hidden;
   /* soft blue-violet vignette rising from the bottom edge, same family as
-     the composer glow — an ambient echo rather than a repeat of it */
+       the composer glow — an ambient echo rather than a repeat of it */
   background: radial-gradient(ellipse at 50% 100%, rgba(76, 141, 246, 0.16) 0%, rgba(19, 19, 24, 0) 55%);
 }
 
@@ -88,28 +88,27 @@
 /* ---------- composer pill ---------- */
 
 /* Shared by both the centered (home screen) and docked (mid-conversation)
-   composer — fully rounded on every breakpoint per the reference design,
-   not just on mobile. */
+     composer — fully rounded on every breakpoint per the reference design,
+     not just on mobile. */
 .composerPill {
   width: 100%;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 10px 10px 10px 20px;
-  border-radius: 9999px;
+  gap: 10px;
+  padding: 14px 14px 12px 18px;
+  border-radius: 20px;
   background: rgb(var(--color-panel));
   border: 1px solid rgb(var(--color-line));
   box-shadow: var(--shadow-1);
   transition: box-shadow 0.2s var(--ease-standard), border-color 0.2s var(--ease-standard);
 }
 
-/* Multi-line state: once the textarea wraps past one line, the pill can no
-   longer be a true stadium shape (the corners would clip descenders), so it
-   relaxes to a large rounded rect instead. Toggled from JS via the
-   data-expanded attribute rather than a height media query. */
+/* Multi-line state: kept close to the collapsed radius now that the shape
+     is a rounded rect rather than a true stadium pill, so it doesn't need to
+     relax much further as the textarea grows. */
 .composerPill[data-expanded="true"] {
-  border-radius: 28px;
-  padding: 16px 16px 12px 20px;
+  border-radius: 22px;
+  padding: 16px 16px 12px 18px;
 }
 
 .composerPill:focus-within {
@@ -119,7 +118,7 @@
 
 .composerRow {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   gap: 10px;
 }
 
@@ -148,7 +147,7 @@
   justify-content: center;
   width: 36px;
   height: 36px;
-  border-radius: 9999px;
+  border-radius: 12px;
   border: none;
   background: transparent;
   color: rgb(var(--color-ink) / 0.55);
@@ -171,7 +170,7 @@
 }
 
 /* the send/stop button stays filled so it reads as the primary action,
-   same gradient family as the rest of the accent system */
+     same gradient family as the rest of the accent system */
 .sendButton {
   flex-shrink: 0;
   display: flex;
@@ -179,7 +178,7 @@
   justify-content: center;
   width: 36px;
   height: 36px;
-  border-radius: 9999px;
+  border-radius: 12px;
   border: none;
   cursor: pointer;
   background: linear-gradient(135deg, #4C8DF6, #9168F0, #F45FA0);
@@ -194,4 +193,132 @@
 
 .sendButton:active:not(:disabled) {
   transform: scale(0.94);
+}
+
+/* ---------- mode toggle + onboarding hint, tucked under the pill ---------- */
+
+.composerFooter {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 4px 0 12px;
+}
+
+.modeToggle {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 12px;
+  background: rgb(var(--color-panel-2));
+}
+
+.modeToggleBtn {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 11.5px;
+  font-weight: 500;
+  padding: 5px 12px;
+  border-radius: 9px;
+  color: rgb(var(--color-ink) / 0.5);
+  transition: background-color 0.15s var(--ease-standard), color 0.15s var(--ease-standard);
+}
+
+.modeToggleBtn:hover {
+  color: rgb(var(--color-ink) / 0.8);
+}
+
+.modeToggleBtn[data-active="true"] {
+  background: rgb(var(--color-panel));
+  color: rgb(var(--color-ink));
+  box-shadow: var(--shadow-1);
+}
+
+/* subtle inline nudge — small, muted, disappears once a survey is attached */
+.composerHint {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 11px;
+  color: rgb(var(--color-ink) / 0.4);
+  animation: hintFadeIn 0.25s var(--ease-standard);
+}
+
+@keyframes hintFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-2px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ---------- attached-survey chip — reads as a real file, not a tag ---------- */
+
+.surveyChip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 60%;
+  background: rgb(var(--color-panel-2));
+  border: 1px solid rgb(var(--color-line-2));
+  border-radius: 14px;
+  padding: 10px 12px;
+}
+
+.surveyChipIcon {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  background: rgb(var(--color-panel));
+  color: rgb(var(--color-ink) / 0.7);
+}
+
+.surveyChipText {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.surveyChipLabel {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: rgb(var(--color-ink) / 0.45);
+}
+
+.surveyChipTitle {
+  font-size: 13.5px;
+  font-weight: 500;
+  color: rgb(var(--color-ink));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.surveyChipClose {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  color: rgb(var(--color-ink) / 0.45);
+  transition: background-color 0.15s var(--ease-standard), color 0.15s var(--ease-standard);
+}
+
+.surveyChipClose:hover {
+  background: rgb(var(--color-panel));
+  color: rgb(var(--color-ink));
 }

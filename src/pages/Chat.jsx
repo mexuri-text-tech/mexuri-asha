@@ -9,7 +9,7 @@ import PaymentModal from "../components/PaymentModal";
 import SurveyPickerModal from "../components/SurveyPickerModal";
 import * as db from "../lib/services/dbService";
 import * as ai from "../lib/services/aiService";
-import { rankTemplates, matchTemplateFromText } from "../lib/templates/compatibility";
+import { recommendTemplate } from "../lib/templates/compatibility";
 import styles from "./ChatHome.module.css";
 
 // ---------- sparkle mark (Gemini-style four-point accent, own gradient) ----------
@@ -244,15 +244,14 @@ export default function Chat() {
   const [thinkingLabel, setThinkingLabel] = useState("Thinking"); // "Thinking" | "Analyzing" — shown next to the reply dots
 
   const [mySurveys, setMySurveys] = useState([]);
-  const [plusMenuOpen, setPlusMenuOpen] = useState(false);
   const [surveyModalOpen, setSurveyModalOpen] = useState(false);
   const [referencedSurvey, setReferencedSurvey] = useState(null);
+  const [mode, setMode] = useState("chat"); // "chat" | "analyse"
 
   const [planningQuestions, setPlanningQuestions] = useState(null); // array | null
   const [planningIndex, setPlanningIndex] = useState(0);
   const [planningAnswers, setPlanningAnswers] = useState({});
   const [buildPanel, setBuildPanel] = useState(null); // { building, survey } | null
-  const [pendingDesign, setPendingDesign] = useState(null); // { messageId, draft, options } | null — awaiting a design choice, typed or tapped
   const [showPaymentModal, setShowPaymentModal] = useState(false);
 
   const scrollRef = useRef(null);
@@ -306,19 +305,13 @@ export default function Chat() {
     setInput("");
     setReferencedSurvey(null);
     setPlanningQuestions(null);
-    setPendingDesign(null);
   }
 
   function handleSelectChat(id) {
     navigate(`/chat/${id}`);
   }
 
-  function togglePlusMenu() {
-    setPlusMenuOpen((o) => !o);
-  }
-
   function openSurveyModal() {
-    setPlusMenuOpen(false);
     setSurveyModalOpen(true);
   }
 
@@ -326,6 +319,7 @@ export default function Chat() {
     try {
       const full = await db.getSurvey(survey.id); // pulls questions + responses
       setReferencedSurvey(full);
+      setMode("analyse");
     } catch (err) {
       setErrorMsg(err.message || "Couldn't load that survey.");
     }
@@ -334,6 +328,13 @@ export default function Chat() {
 
   function clearReference() {
     setReferencedSurvey(null);
+  }
+
+  // Leaving Analyse mode drops whatever survey was attached — going back
+  // in starts clean rather than silently re-using a stale reference.
+  function handleModeChange(next) {
+    setMode(next);
+    if (next === "chat") setReferencedSurvey(null);
   }
 
   function stopSending() {
@@ -367,21 +368,6 @@ export default function Chat() {
       chat = { ...chat, messages: [...chat.messages, userMsg] };
       setActiveChat(chat);
 
-      // A design decision is pending (the design-suggestion card is up,
-      // unlocked) — see if what they typed reads as a design choice
-      // ("make it feel like a slideshow") before treating this as a
-      // normal chat turn. A match builds the survey immediately; no
-      // match just falls through to the AI reply below as usual.
-      if (pendingDesign) {
-        const matchedId = matchTemplateFromText(text, pendingDesign.options);
-        if (matchedId) {
-          setSending(false);
-          abortRef.current = null;
-          await handleConfirmDesign(pendingDesign.messageId, matchedId, pendingDesign.draft);
-          return;
-        }
-      }
-
       setThinkingLabel(referencedSurvey ? "Analyzing" : "Thinking");
       const titlePromise = !chat.titleLocked ? ai.generateChatTitle(text) : Promise.resolve(null);
       const replyPromise = ai.sendMessage({
@@ -390,6 +376,7 @@ export default function Chat() {
         responseStyle: session.responseStyle,
         referencedSurvey: referencedSurvey || null,
         documentContexts: [],
+        mode,
         signal: controller.signal,
       });
 
@@ -456,6 +443,7 @@ export default function Chat() {
         userMessage: lastUserMsg.text,
         responseStyle: session.responseStyle,
         referencedSurvey: referencedSurvey || null,
+        mode,
         signal: controller.signal,
       });
 
@@ -528,6 +516,7 @@ export default function Chat() {
         userMessage: newText,
         responseStyle: session.responseStyle,
         referencedSurvey: referencedSurvey || null,
+        mode,
         signal: controller.signal,
       });
 
@@ -598,31 +587,23 @@ export default function Chat() {
       ].join("\n");
 
       const drafted = await ai.generateSurvey({ chatContext });
-      const shortlist = rankTemplates(drafted.questions, 3);
+      const recommended = recommendTemplate(drafted.questions);
 
       const suggestionMsg = await db.appendMessage(activeChat.id, {
         role: "assistant",
-        text: `I've drafted "${drafted.title}". Here are three design directions that would fit — pick one, or tell me what look you're after.`,
+        text: `I've drafted "${drafted.title}". Pick a design direction and I'll build it.`,
         blocks: [
-          { type: "text", content: `I've drafted **${drafted.title}**. Here are three design directions that would fit — pick one below, or just tell me what look you're after.` },
+          { type: "text", content: `I've drafted **${drafted.title}**. Pick a design direction and I'll build it.` },
           {
             type: "templateSuggestion",
             draft: drafted,
             questions: drafted.questions,
-            templateId: null,
+            templateId: recommended.id,
             locked: false,
           },
         ],
       });
       setActiveChat((chat) => ({ ...chat, messages: [...chat.messages, suggestionMsg] }));
-      // Lets handleSend recognize a typed reply as a design decision
-      // (e.g. "make it feel like a slideshow") instead of routing it
-      // through the general chat model.
-      setPendingDesign({
-        messageId: suggestionMsg.id,
-        draft: drafted,
-        options: shortlist,
-      });
     } catch (err) {
       console.error(err);
       setErrorMsg(err.message || "Couldn't draft the survey. Please try again.");
@@ -643,7 +624,6 @@ export default function Chat() {
       setBuildPanel({ building: false, survey });
       setMySurveys((prev) => [survey, ...prev]);
       addSurveyToList(survey);
-      setPendingDesign(null);
 
       // Lock the card in place so it reads as decided rather than still pickable.
       const msg = activeChat.messages.find((m) => m.id === messageId);
@@ -737,8 +717,8 @@ export default function Chat() {
                     referencedSurvey={referencedSurvey}
                     onPickReference={pickReference}
                     onClearReference={clearReference}
-                    plusMenuOpen={plusMenuOpen}
-                    onTogglePlusMenu={togglePlusMenu}
+                    mode={mode}
+                    onModeChange={handleModeChange}
                     surveyModalOpen={surveyModalOpen}
                     onOpenSurveyModal={openSurveyModal}
                     onCloseSurveyModal={() => setSurveyModalOpen(false)}
@@ -819,8 +799,8 @@ export default function Chat() {
                       referencedSurvey={referencedSurvey}
                       onPickReference={pickReference}
                       onClearReference={clearReference}
-                      plusMenuOpen={plusMenuOpen}
-                      onTogglePlusMenu={togglePlusMenu}
+                      mode={mode}
+                      onModeChange={handleModeChange}
                       surveyModalOpen={surveyModalOpen}
                       onOpenSurveyModal={openSurveyModal}
                       onCloseSurveyModal={() => setSurveyModalOpen(false)}
@@ -849,10 +829,11 @@ const TEXTAREA_MAX_HEIGHT = 500;
 function Composer({
   input, setInput, onSend, onStop, sending, centered, mySurveys, referencedSurvey,
   onPickReference, onClearReference,
-  plusMenuOpen, onTogglePlusMenu, surveyModalOpen, onOpenSurveyModal, onCloseSurveyModal,
+  mode, onModeChange, surveyModalOpen, onOpenSurveyModal, onCloseSurveyModal,
 }) {
   const textareaRef = useRef(null);
-  const idlePlaceholder = useIdlePlaceholder(!input && !sending);
+  const isAnalyse = mode === "analyse";
+  const idlePlaceholder = useIdlePlaceholder(!input && !sending && !isAnalyse);
   // Tracks whether the textarea has grown past one line — the pill relaxes
   // from a true stadium shape to a large rounded rect once that happens
   // (see .composerPill[data-expanded] in ChatHome.module.css).
@@ -884,49 +865,27 @@ function Composer({
       style={centered ? { boxShadow: "none" } : undefined}
     >
       {referencedSurvey && (
-        <div style={{
-          display: "flex", alignItems: "center", gap: 8, width: "fit-content",
-          background: "rgb(var(--color-panel-2))", border: "1px solid rgb(var(--color-line))",
-          borderRadius: 999, padding: "6px 10px", fontSize: 12, color: "rgb(var(--color-ink) / 0.7)",
-        }}>
-          <IconFileText size={12} />
-          <span style={{ maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {referencedSurvey.title}
+        <div className={styles.surveyChip}>
+          <span className={styles.surveyChipIcon}>
+            <IconFileText size={16} />
           </span>
-          <button onClick={onClearReference} className="focus-ring" style={{ color: "rgb(var(--color-ink) / 0.4)", display: "flex" }}>
-            <IconX size={11} />
+          <div className={styles.surveyChipText}>
+            <span className={styles.surveyChipLabel}>Analysing</span>
+            <span className={styles.surveyChipTitle}>{referencedSurvey.title}</span>
+          </div>
+          <button onClick={onClearReference} className={`focus-ring ${styles.surveyChipClose}`}>
+            <IconX size={13} />
           </button>
         </div>
       )}
       <div className={styles.composerRow}>
-        <div style={{ position: "relative" }}>
-          <button
-            onClick={onTogglePlusMenu}
-            title="Add"
-            className={`focus-ring ${styles.iconButton}`}
-          >
-            <IconPlus size={17} />
-          </button>
-
-          {plusMenuOpen && (
-            <div style={{
-              position: "absolute", bottom: 46, left: 0, width: 192,
-              background: "rgb(var(--color-panel))", border: "1px solid rgb(var(--color-line))",
-              borderRadius: 16, boxShadow: "var(--shadow-2)", padding: "4px 0", zIndex: 10,
-            }}>
-              <button
-                onClick={onOpenSurveyModal}
-                className="focus-ring"
-                style={{
-                  width: "100%", display: "flex", alignItems: "center", gap: 8, textAlign: "left",
-                  padding: "8px 12px", fontSize: 12, color: "rgb(var(--color-ink) / 0.7)", background: "none", border: "none", cursor: "pointer",
-                }}
-              >
-                <IconClipboard size={14} /> Add survey
-              </button>
-            </div>
-          )}
-        </div>
+        <button
+          onClick={onOpenSurveyModal}
+          title="Add a survey to analyse"
+          className={`focus-ring ${styles.iconButton}`}
+        >
+          <IconPlus size={17} />
+        </button>
 
         <textarea
           ref={textareaRef}
@@ -940,19 +899,48 @@ function Composer({
               onSend();
             }
           }}
-          placeholder={idlePlaceholder}
+          placeholder={isAnalyse && !referencedSurvey ? "Add a survey to analyse…" : idlePlaceholder}
           className={styles.composerTextarea}
           style={{ maxHeight: TEXTAREA_MAX_HEIGHT }}
         />
 
         <button
           onClick={sending ? onStop : onSend}
-          disabled={!sending && !input.trim()}
+          disabled={!sending && (!input.trim() || (isAnalyse && !referencedSurvey))}
           className={`focus-ring ${styles.sendButton}`}
           title={sending ? "Stop" : "Send"}
         >
           {sending ? <IconStop size={13} /> : <IconSend size={15} />}
         </button>
+      </div>
+
+      <div className={styles.composerFooter}>
+        <div className={styles.modeToggle} role="tablist" aria-label="Asha mode">
+          <button
+            role="tab"
+            aria-selected={!isAnalyse}
+            onClick={() => onModeChange("chat")}
+            className={styles.modeToggleBtn}
+            data-active={!isAnalyse}
+          >
+            Chat
+          </button>
+          <button
+            role="tab"
+            aria-selected={isAnalyse}
+            onClick={() => onModeChange("analyse")}
+            className={styles.modeToggleBtn}
+            data-active={isAnalyse}
+          >
+            Analyse
+          </button>
+        </div>
+
+        {isAnalyse && !referencedSurvey && (
+          <span className={styles.composerHint}>
+            Tap <IconPlus size={10} /> to pick a survey
+          </span>
+        )}
       </div>
 
       {surveyModalOpen && (
@@ -968,34 +956,14 @@ function Composer({
 
 // Inline replacement for the composer while planning questions are being
 // asked — same information as the old fullscreen modal, just docked in
-// place instead of interrupting the chat. Founders can either tap a
-// suggested option OR type their own answer straight into the chatbox —
-// picking isn't the only way through.
+// place instead of interrupting the chat.
 function PlanningComposer({ questions, index, setIndex, answers, setAnswers, onComplete, onCancel }) {
   const q = questions[index];
   const selected = answers[q.id];
   const isLast = index === questions.length - 1;
-  const [customText, setCustomText] = useState("");
-
-  // Reset the typed draft whenever the question changes, but keep it
-  // prefilled if the founder already typed a custom answer for this one
-  // (e.g. after hitting Back).
-  useEffect(() => {
-    setCustomText(selected && !q.options.includes(selected) ? selected : "");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q.id]);
 
   function selectOption(opt) {
-    setCustomText("");
     setAnswers((a) => ({ ...a, [q.id]: opt }));
-  }
-
-  function submitCustom() {
-    const val = customText.trim();
-    if (!val) return;
-    setAnswers((a) => ({ ...a, [q.id]: val }));
-    if (isLast) onComplete({ ...answers, [q.id]: val });
-    else setIndex(index + 1);
   }
 
   function handleNext() {
@@ -1035,31 +1003,6 @@ function PlanningComposer({ questions, index, setIndex, answers, setAnswers, onC
           </button>
         ))}
       </div>
-
-      {/* Free-text alternative — answering doesn't require picking one of
-          the suggested options above. */}
-      <div className="flex items-center gap-2 mb-3">
-        <input
-          value={customText}
-          onChange={(e) => setCustomText(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              submitCustom();
-            }
-          }}
-          placeholder="Or type your own answer…"
-          className="focus-ring flex-1 min-w-0 text-xs bg-transparent border border-line2 rounded-full px-3 py-2 placeholder:text-ink/30 focus:border-accent-soft transition"
-        />
-        <button
-          onClick={submitCustom}
-          disabled={!customText.trim()}
-          className="focus-ring shrink-0 text-xs font-medium text-ink/60 hover:text-ink disabled:opacity-30 disabled:hover:text-ink/60 border border-line2 rounded-full px-3 py-2 transition"
-        >
-          {isLast ? "Use & build" : "Use"}
-        </button>
-      </div>
-
       <div className="flex items-center justify-between">
         <button
           onClick={() => setIndex((i) => Math.max(0, i - 1))}

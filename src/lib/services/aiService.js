@@ -21,11 +21,12 @@ async function authedPost(path, body, { signal } = {}) {
   return res.json();
 }
 
-export async function sendMessage({ history, userMessage, responseStyle = "casual", referencedSurvey = null, documentContexts = [], signal }) {
+export async function sendMessage({ history, userMessage, responseStyle = "casual", referencedSurvey = null, documentContexts = [], mode = "chat", signal }) {
   return authedPost("/api/ai/chat", {
     history,
     userMessage,
     responseStyle,
+    mode,
     referencedSurvey: referencedSurvey
       ? {
         title: referencedSurvey.title,

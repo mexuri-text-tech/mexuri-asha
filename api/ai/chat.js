@@ -45,8 +45,19 @@ export default async function handler(req, res) {
   const user = await verifyUser(req);
   if (!user) return res.status(401).json({ error: "Unauthorized" });
 
-  const { history = [], userMessage, responseStyle = "casual", referencedSurvey = null, documentContexts = [] } = req.body;
+  const { history = [], userMessage, responseStyle = "casual", referencedSurvey = null, documentContexts = [], mode = "chat" } = req.body;
   const transcript = history.map((m) => `${m.role.toUpperCase()}: ${m.text}`).join("\n");
+
+  // Analyse mode with nothing attached yet — don't burn a model call, just
+  // nudge the user toward the + button. Once they pick a survey,
+  // referencedSurvey will be set and this branch is skipped.
+  if (mode === "analyse" && !referencedSurvey) {
+    return res.status(200).json({
+      text: "Add a survey with the **+** button below and I'll dig into its responses with you.",
+      blocks: [{ type: "text", content: "Add a survey with the **+** button below and I'll dig into its responses with you." }],
+      suggestSurvey: false,
+    });
+  }
 
   let referenceBlock = "";
   if (referencedSurvey) {
@@ -69,7 +80,11 @@ If the user is asking about this survey's results, analyze the response data abo
   const documentBlock = buildDocumentsBlock(documentContexts);
   const hasRealData = !!(referencedSurvey?.responseSummary || documentBlock);
 
-  const prompt = `You are Asha — an AI survey analyst. Your job is to help people with two things only: designing surveys to gather data they don't have yet, and making sense of survey response data they already have. You are not a general-purpose chatbot; every reply should move the user closer to a well-designed survey or a clear finding from their results.
+  const personaBlock = mode === "analyse"
+    ? `You are Asha, in Analyse mode. The user has attached a survey below — your whole focus right now is making sense of its response data: clear, honest insights in plain English, grounded only in the numbers given, plus a concrete next step where relevant.`
+    : `You are Asha — a sharp, friendly thinking partner for founders. Talk naturally, like a real conversation — answer whatever the user actually asks, riff on ideas, help them think something through. You also happen to be great at designing surveys: if the conversation naturally arrives at a need to gather real data (a topic, an audience, a question they can't answer from a vibe alone), you can offer to build a survey for that — but don't force every reply toward one.`;
+
+  const prompt = `${personaBlock}
 Tone: ${STYLE_GUIDE[responseStyle] || STYLE_GUIDE.casual}
 
 Formatting inside text blocks: this is markdown, rendered properly — use it with restraint, like a good analyst writing a memo, not a wall of headers. 
@@ -80,8 +95,6 @@ A markdown table is a good alternative to a chart when the data is more precise 
 Decide whether there's enough context to justify building a new survey now (suggestSurvey: true). This requires the user to have named an actual topic or purpose — e.g. "customer feedback after checkout", "post-event feedback for our conference", "employee engagement" — not just a bare intent to make one.
 
 If they've only said something like "I want to make a survey" or "help me build a survey" with no topic, do NOT set suggestSurvey — reply normally (suggestSurvey: false) and ask what it's for: what they want to learn, who it's for, or what kind of survey (customer feedback, event registration, employee engagement, product research, etc.). Only move to suggestSurvey: true once you actually know the topic.
-
-Before setting suggestSurvey: true, weigh how well you actually understand this specific project, not just whether a topic was named. A topic alone ("customer feedback survey") is often enough to start — Asha will ask a few sharper planning questions right after this reply to fill real gaps (who it's for, what decision the results should inform, anything unusual about this case). Use this reply to go one layer deeper than the surface topic where you can: if the user's message already hints at a goal, audience, or constraint, reflect that understanding back briefly instead of just restating the topic — it shows Asha is actually listening, not pattern-matching on a keyword.
 
 If suggestSurvey is true: keep your text block(s) brief — one short sentence acknowledging what they want to build. Do NOT give generic survey-writing advice, checklists, or best-practice tips — Asha will ask a few short clarifying questions immediately after your reply, so don't pre-empt that with a listicle.
 
