@@ -9,6 +9,7 @@ import SurveyDetail from "./pages/SurveyDetail";
 import Analytics from "./pages/Analytics";
 import Settings from "./pages/Settings";
 import PublicSurvey from "./pages/PublicSurvey";
+import Admin from "./pages/Admin";
 import { TERMS_VERSION } from "./data/termsContent";
 import TermsGate from "./components/TermGate";
 
@@ -105,6 +106,7 @@ function Routed() {
         }
       />
 
+      <Route path="/admin" element={<RequireAuth><Admin /></RequireAuth>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );

@@ -6,9 +6,12 @@ SUPABASE_URL=
 SUPABASE_SERVICE_ROLE_KEY=
 GROQ_API_KEY=
 GROQ_MODEL=qwen/qwen3.6-27b
+
 # Hosted Muse Glimmer access for the "reasoning" task — from
 # https://api.together.ai/settings/api-keys
 TOGETHER_API_KEY=
+
+
 FLW_SECRET_KEY=
 FLW_WEBHOOK_HASH=
 VITE_API_BASE_URL=
