@@ -28,6 +28,7 @@ function mapMessageRow(row) {
       ? [{ fileName: row.attachment_name, type: row.attachment_type, summary: row.attachment_summary, path: row.attachment_path }]
       : []),
     blocks: row.blocks || null,
+    feedback: row.feedback || null,
     createdAt: row.created_at,
   };
 }
@@ -150,6 +151,7 @@ export async function updateMessage(messageId, patch) {
   if (patch.text !== undefined) row.text = patch.text;
   if (patch.blocks !== undefined) row.blocks = patch.blocks;
   if (patch.suggestSurvey !== undefined) row.suggest_survey = patch.suggestSurvey;
+  if (patch.feedback !== undefined) row.feedback = patch.feedback;
 
   const { data, error } = await supabase
     .from("messages")
@@ -327,4 +329,3 @@ export async function submitResponse(surveyId, answers) {
   if (error) throw error;
   return getSurvey(surveyId);
 }
-

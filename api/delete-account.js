@@ -1,6 +1,7 @@
 import { verifyUser } from "./_lib/verifyUser.js";
 import { supabaseAdmin } from "./_lib/supabaseAdmin.js";
 import { applyCors } from "./_lib/cors.js";
+import { logAndFail } from "./_lib/errors.js";
 
 export default async function handler(req, res) {
   if (applyCors(req, res)) return;

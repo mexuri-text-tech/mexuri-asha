@@ -330,6 +330,30 @@ export default function Chat() {
     setReferencedSurvey(null);
   }
 
+  // Toggle: clicking the same rating again clears it, matching the
+  // "un-press" behavior users expect from feedback buttons.
+  async function handleFeedback(messageId, value) {
+    const messages = activeChat?.messages || [];
+    const current = messages.find((m) => m.id === messageId)?.feedback;
+    const next = current === value ? null : value;
+
+    setActiveChat((chat) => ({
+      ...chat,
+      messages: chat.messages.map((m) => (m.id === messageId ? { ...m, feedback: next } : m)),
+    }));
+
+    try {
+      await db.updateMessage(messageId, { feedback: next });
+    } catch (err) {
+      console.error(err);
+      // Roll back on failure so the UI doesn't lie about what's saved.
+      setActiveChat((chat) => ({
+        ...chat,
+        messages: chat.messages.map((m) => (m.id === messageId ? { ...m, feedback: current ?? null } : m)),
+      }));
+    }
+  }
+
   // Leaving Analyse mode drops whatever survey was attached — going back
   // in starts clean rather than silently re-using a stale reference.
   function handleModeChange(next) {
@@ -745,6 +769,7 @@ export default function Chat() {
                       onEdit={handleEditMessage}
                       editing={editingId === m.id}
                       busy={sending || !!regeneratingId || !!editingId}
+                      onFeedback={handleFeedback}
                     />
                   ))}
                   {sending && (

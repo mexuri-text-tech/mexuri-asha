@@ -1,6 +1,7 @@
 import { verifyUser } from "../_lib/verifyUser.js";
 import { callGroq } from "../_lib/groq.js";
 import { applyCors } from "../_lib/cors.js";
+import { logAndFail } from "../_lib/errors.js";
 import { BRAND_RULES } from "../_lib/brand.js";
 
 const VALID_TYPES = new Set(["single", "multi", "text", "scale"]);

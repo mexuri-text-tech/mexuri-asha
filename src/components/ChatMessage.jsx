@@ -13,6 +13,7 @@ export default function ChatMessage({
   onEdit,
   editing,
   busy, // true while ANY send/edit/regenerate is in flight — disables actions app-wide
+  onFeedback,
 }) {
   const [copied, setCopied] = useState(false);
   const [draft, setDraft] = useState(message.text);
@@ -173,8 +174,22 @@ export default function ChatMessage({
         <button onClick={handleCopy} className="focus-ring hover:text-ink transition" title={copied ? "Copied" : "Copy"}>
           {copied ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} />}
         </button>
-        <button className="focus-ring hover:text-ink transition" title="Good response"><ThumbsUp size={14} /></button>
-        <button className="focus-ring hover:text-ink transition" title="Bad response"><ThumbsDown size={14} /></button>
+        <button
+          onClick={() => onFeedback?.(message.id, "up")}
+          className={`focus-ring hover:text-ink transition ${message.feedback === "up" ? "text-emerald-400" : ""}`}
+          title="Good response"
+          aria-pressed={message.feedback === "up"}
+        >
+          <ThumbsUp size={14} fill={message.feedback === "up" ? "currentColor" : "none"} />
+        </button>
+        <button
+          onClick={() => onFeedback?.(message.id, "down")}
+          className={`focus-ring hover:text-ink transition ${message.feedback === "down" ? "text-rose-400" : ""}`}
+          title="Bad response"
+          aria-pressed={message.feedback === "down"}
+        >
+          <ThumbsDown size={14} fill={message.feedback === "down" ? "currentColor" : "none"} />
+        </button>
         <button
           onClick={() => onRegenerate?.(message.id)}
           disabled={regenerating}
