@@ -15,6 +15,7 @@ const STYLE_GUIDE = {
 // regardless of how many files are attached. (Nothing in the app attaches
 // files anymore — Asha only handles survey creation/analysis now — but this
 // stays as a safety net in case documentContexts is ever populated again.)
+
 const MAX_TOTAL_DOC_CONTEXT_CHARS = 9000;
 
 // documentContexts: [{ fileName, type, summary }, ...] -> single prompt block.

@@ -123,7 +123,7 @@ export function SurveyThanksScreen() {
         <h1 className="text-xl font-bold mb-2">Thanks for your response!</h1>
         <p className="text-ink/40 text-sm mb-10">It's been recorded.</p>
 
-        <div className="rounded-2xl border border-line bg-gradient-to-br from-accent/10 via-accent-soft/5 to-transparent px-6 py-7">
+        {/* <div className="rounded-2xl border border-line bg-gradient-to-br from-accent/10 via-accent-soft/5 to-transparent px-6 py-7">
           <img
             src="https://res.cloudinary.com/xtydyhi0/image/upload/v1784464670/Asha_Logo_forBlack_mt8s2u.svg"
             width="36px"
@@ -135,14 +135,14 @@ export function SurveyThanksScreen() {
             This form was built in minutes with Asha — describe what you need, and the AI drafts it for you.
           </p>
           <a
-            href="https://asha.com.ng?utm_source=survey_thanks&utm_medium=respondent_cta"
+            href="https://asha-surveys.vercel.app"
             target="_blank"
             rel="noopener noreferrer"
             className="inline-flex items-center justify-center w-full rounded-full bg-accent text-white text-sm font-semibold py-3 hover:opacity-90 active:scale-[0.98] transition"
           >
             Try Asha for free
           </a>
-        </div>
+        </div> */}
       </div>
     </div>
   );
